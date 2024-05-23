@@ -48,45 +48,42 @@ class Rfc6750Action(next: EssentialAction)(implicit ec: ExecutionContext, mat: M
   }
 
   private def run(untaggedRequest: RequestHeader): Accumulator[ByteString, Result] = {
-    val acc = {
-      val fromAuthorizationHeader = AccessTokenActionHelper.extractTokenFromAuthorizationHeader(untaggedRequest)
-      val fromQueryParameter = AccessTokenActionHelper.extractTokenFromQueryParameters(untaggedRequest)
+    val fromAuthorizationHeader = AccessTokenActionHelper.extractTokenFromAuthorizationHeader(untaggedRequest)
+    val fromQueryParameter = AccessTokenActionHelper.extractTokenFromQueryParameters(untaggedRequest)
 
-      if (fromAuthorizationHeader.isDefined && fromQueryParameter.isDefined) {
-        // An access_token was present in the Authorization header
-        // and the query parameters, clients MUST NOT use more than one method to
-        // transmit the token in each request,
-        // see https://datatracker.ietf.org/doc/html/rfc6750#section-2
-        throw Error(BAD_REQUEST, "invalid_request")
-      }
-
-      // if an access token is found as a Bearer Token in the Authorization header,
-      // or if an access token was provided via the 'access_token' query parameter
-      // add it to the request attrs
-      val request = AccessTokenActionHelper.tagRequestWith(untaggedRequest, fromAuthorizationHeader.orElse(fromQueryParameter))
-
-      if (AccessTokenActionHelper.hasInvalidContentType(request)) {
-        throw Error(BAD_REQUEST, "invalid_request")
-      }
-
-      // this function exists purely to aid readability
-      def continueWithoutParsingBody = next(request)
-
-      request.contentType match {
-        case Some(APPLICATION_FORM_URL_ENCODED) =>
-          logger.trace(s"searching for access token in request body...")
-          tagRequestFromFormBody(request, next, FORM_FIELD_ACCESS_TOKEN)
-        case Some(content) =>
-          logger.trace(s"not searching for access token in request body because sending access_token " +
-            s"in request body with Content-Type '$content' is not supported, " +
-            s"see https://datatracker.ietf.org/doc/html/rfc6750")
-          continueWithoutParsingBody
-        case None =>
-          logger.trace(s"not searching for access token in request body because there is no Content-Type")
-          continueWithoutParsingBody
-      }
+    if (fromAuthorizationHeader.isDefined && fromQueryParameter.isDefined) {
+      // An access_token was present in the Authorization header
+      // and the query parameters, clients MUST NOT use more than one method to
+      // transmit the token in each request,
+      // see https://datatracker.ietf.org/doc/html/rfc6750#section-2
+      throw Error(BAD_REQUEST, "invalid_request")
     }
-    acc
+
+    // if an access token is found as a Bearer Token in the Authorization header,
+    // or if an access token was provided via the 'access_token' query parameter
+    // add it to the request attrs
+    val request = AccessTokenActionHelper.tagRequestWith(untaggedRequest, fromAuthorizationHeader.orElse(fromQueryParameter))
+
+    if (AccessTokenActionHelper.hasInvalidContentType(request)) {
+      throw Error(BAD_REQUEST, "invalid_request")
+    }
+
+    // this function exists purely to aid readability
+    def continueWithoutParsingBody = next(request)
+
+    request.contentType match {
+      case Some(APPLICATION_FORM_URL_ENCODED) =>
+        logger.trace(s"searching for access token in request body...")
+        tagRequestFromFormBody(request, next, FORM_FIELD_ACCESS_TOKEN)
+      case Some(content) =>
+        logger.trace(s"not searching for access token in request body because sending access_token " +
+          s"in request body with Content-Type '$content' is not supported, " +
+          s"see https://datatracker.ietf.org/doc/html/rfc6750")
+        continueWithoutParsingBody
+      case None =>
+        logger.trace(s"not searching for access token in request body because there is no Content-Type")
+        continueWithoutParsingBody
+    }
   }
 
   private def tagRequestFromFormBody: (RequestHeader, EssentialAction, String) => Accumulator[ByteString, Result] =
