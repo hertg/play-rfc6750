@@ -18,6 +18,8 @@ Compile / packageDoc / publishArtifact := false
 libraryDependencies ++= Seq(
   caffeine,
   guice,
-  ws
+  ws,
+
+  "org.scalatestplus.play" %% "scalatestplus-play" % "7.0.1" % "test"
 )
 

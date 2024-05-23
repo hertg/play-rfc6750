@@ -1,1 +1,4 @@
-GET     /           org.example.RootController.index(request: Request)
+GET         /            org.example.RootController.index(request: Request)
+GET         /echo        org.example.RootController.echoToken(request: Request)
++nocsrf
+POST        /echo        org.example.RootController.echoToken(request: Request)

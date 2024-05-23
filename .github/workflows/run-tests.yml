@@ -1,0 +1,29 @@
+# reusable workflow
+name: Run tests
+
+on:
+  workflow_call:
+    inputs:
+      jdk-version:
+        type: number
+        required: true
+        default: 8
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    name: test project
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Scala (sbt)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '${{ inputs.jdk-version }}'
+
+      - name: Test Root
+        run: sbt -v "project root" test
+        shell: bash

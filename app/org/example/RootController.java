@@ -10,4 +10,9 @@ public class RootController extends Controller {
         return ok("hello world");
     }
 
+    public Result echoToken(final Http.Request request) {
+        var token = request.attrs().getOptional(Rfc6750Action.RAW_ACCESS_TOKEN().asJava());
+        return ok(token.orElse(""));
+    }
+
 }

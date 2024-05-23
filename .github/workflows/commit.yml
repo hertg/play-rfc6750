@@ -1,0 +1,17 @@
+name: Commit
+
+on:
+  push:
+
+jobs:
+  test:
+    name: Test
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: 21
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      jdk-version: ${{ matrix.java }}
