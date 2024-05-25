@@ -2,7 +2,6 @@ package org.example
 
 import org.apache.pekko.stream.*
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
-import org.apache.pekko.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import org.apache.pekko.util.ByteString
 import play.api.http.HeaderNames.{AUTHORIZATION, CONTENT_TYPE}
 import play.api.http.Status.{BAD_REQUEST, INTERNAL_SERVER_ERROR, UNAUTHORIZED}
@@ -13,7 +12,6 @@ import play.api.mvc.{EssentialAction, RequestHeader, Result}
 import play.api.{Logger, Logging}
 
 import java.net.{URLDecoder, URLEncoder}
-import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 
 object Rfc6750Action {
@@ -89,123 +87,7 @@ class Rfc6750Action(next: EssentialAction)(implicit ec: ExecutionContext, mat: M
   private def tagRequestFromFormBody: (RequestHeader, EssentialAction, String) => Accumulator[ByteString, Result] =
     tagFromBody(AccessTokenActionHelper.extractTokenFromRawFormBody)
 
-  /**
-   * This custom graph stage will buffer the first N bytes and pass them downstream as the first element,
-   * if the incoming data exceeds the byteLimit, anything overflowing the buffer is sent downstream as the second element,
-   * any data coming in after those two elements are passed downstream as is.
-   *
-   * If the incoming data does not exceed to byteLimit and the upstream stops sending data, the data
-   * is sent downstream as one element of size < N.
-   *
-   * @param byteLimit Amount of bytes that should be buffered for the first message downstream
-   */
-  private class BufferFirstBytes(byteLimit: Int) extends GraphStage[FlowShape[ByteString, ByteString]] {
-    private val in = Inlet[ByteString]("BufferFirstBytes.in")
-    private val out = Outlet[ByteString]("BufferFirstBytes.out")
-
-    override def shape: FlowShape[ByteString, ByteString] = FlowShape.of(in, out)
-
-    override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = {
-      new GraphStageLogic(shape) {
-        var buffer: ByteString = ByteString.empty
-        val queue: mutable.Queue[ByteString] = mutable.Queue()
-
-        override def postStop(): Unit = {
-          buffer = ByteString.empty
-          queue.clear()
-          super.postStop()
-        }
-
-        def continueHandler: InHandler with OutHandler = new InHandler with OutHandler {
-          override def onPush(): Unit = {
-            // directly pushing element downstream
-            push(out, grab(in))
-          }
-
-          override def onPull(): Unit = {
-            if (queue.nonEmpty) {
-              // the queue contains elements, pushing the next one downstream
-              push(out, queue.dequeue())
-            } else {
-              if (isClosed(in)) {
-                // the queue is empty and the upstream has closed, the stage should be considered completed
-                completeStage()
-              } else if (hasBeenPulled(in)) {
-                // upstream was already pulled, do nothing and wait for push
-              } else {
-                // pulling from upstream
-                pull(in)
-              }
-            }
-          }
-
-          override def onUpstreamFinish(): Unit = {
-            if (queue.isEmpty) {
-              // upstream just closed and queue is empty, stage should be considered completed
-              completeStage()
-            } else {
-              // upstream just closed but queue still contains elements, emit rest of elements and complete
-              emitMultiple(out, queue.iterator, () => completeStage())
-            }
-          }
-        }
-
-        def bufferHandler: InHandler with OutHandler = new InHandler with OutHandler {
-          override def onPush(): Unit = {
-            val elem = grab(in)
-            if (buffer.size + elem.size >= byteLimit) {
-              // adding the incoming bytes to the buffer overflows the byte-limit
-              // set handler to the continueHandler for upcoming messages
-              setHandlers(in, out, continueHandler)
-
-              // add bytes to buffer but prevent it from becoming larger than the limit
-              val (toBuffer, overflow) = elem.splitAt(byteLimit - buffer.size)
-              buffer ++= toBuffer
-
-              if (isClosed(in) || hasBeenPulled(in)) {
-                // input port is closed or has already been pulled, add the buffer to the queue
-                queue.enqueue(buffer)
-              } else {
-                // push buffer downstream
-                val toPush = buffer
-                push(out, toPush)
-              }
-
-              // clear buffer variable as it is no longer useful
-              buffer = null
-
-              if (!overflow.isEmpty) {
-                // add the overflowing bytes to the queue
-                queue.enqueue(overflow)
-              }
-
-            } else {
-              // add all incoming bytes to the buffer, it still has enough capacity, then pull upstream for more
-              buffer ++= elem
-              pull(in)
-            }
-          }
-
-          override def onPull(): Unit = {
-            if (!hasBeenPulled(in)) {
-              // upstream has not yet been pulled, pulling it now
-              pull(in)
-            }
-          }
-
-          override def onUpstreamFinish(): Unit = {
-            // upstream has closed, emitting buffer and complete stage afterwards
-            emit(out, buffer, () => completeStage())
-          }
-        }
-
-        // use the bufferHandler as the initial handler
-        setHandlers(in, out, bufferHandler)
-      }
-    }
-  }
-
-  private def tagFromBody(extractor: (ByteString, String) => Option[String])(request: RequestHeader, action: EssentialAction, tokenName: String): Accumulator[ByteString, Result] = {
+  private def tagFromBody(extractor: (ByteString, String) => Option[String])(request: RequestHeader, next: EssentialAction, tokenName: String): Accumulator[ByteString, Result] = {
     val flow = Flow[ByteString]
       // buffer the first N bytes into memory
       .via(new BufferFirstBytes(10240))
@@ -228,7 +110,7 @@ class Rfc6750Action(next: EssentialAction)(implicit ec: ExecutionContext, mat: M
 
           // create a sink based on the extracted token from the first element
           val req = AccessTokenActionHelper.tagRequestWith(request, token)
-          val sink = action(req).toSink
+          val sink = next(req).toSink
 
           // create a new source of the complete stream (first element + unconsumed source)
           val source = Source.single(firstElement).concat(rest)
