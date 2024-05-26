@@ -6,6 +6,9 @@ from an incoming request inside a Play Framework [Filter](https://www.playframew
 This includes reading it from an `application/x-www-form-urlencoded` encoded
 request body, which is not easily accessible from within a Play Filter.
 
+
+## Performance
+
 The implementation uses an Essential Action and ~~Akka Streams~~ Pekko Streams
 to prevent duplicate body parsing and achieve a highly performant solution.
 I did a few, rather unscientific tests, and enabling the Filter
@@ -20,3 +23,8 @@ All requests sent are POST requests where the values in the body are randomly ge
 {{$randomUuid}}={{$randomWord}}
 access_token={{$randomWord}}
 ```
+
+| Run      | Total Requests | Requests/s | Resp. Time (Avg ms) |
+|----------|----------------|------------|---------------------|
+| Disabled | 12'219         | 96.63      | 17                  | 
+| Enabled  | 12'191         | 96.43      | 18                  | 
