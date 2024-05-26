@@ -7,7 +7,7 @@ import play.mvc.Result;
 
 public class RootController extends Controller {
 
-    private static final TypedKey<String> TOKEN_ATTR = Rfc6750Action.RAW_ACCESS_TOKEN().asJava();
+    private static final TypedKey<String> TOKEN_ATTR = Rfc6750Filter.RAW_ACCESS_TOKEN().asJava();
 
     public Result index(final Http.Request request) {
         return ok("hello world");

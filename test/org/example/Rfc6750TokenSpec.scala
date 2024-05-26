@@ -13,29 +13,6 @@ class Rfc6750TokenSpec extends PlaySpec with GuiceOneServerPerSuite with ScalaFu
 
   val url: String = s"http://localhost:$port"
 
-  def time(n: Int)(fn: => Unit): Unit = {
-    // warmup
-    1 to 1_000 foreach { _ => fn }
-
-    val start = System.nanoTime()
-
-    // execute
-    1 to n foreach { _ => fn }
-
-    val end = System.nanoTime()
-    val all = end - start
-    val avg = (all / n).toDouble / 1_000 / 1_000
-    println(s"ALL ${all}ms")
-    println(s"AVG ${avg - (avg % 0.01)}ms")
-  }
-
-  "speed test" in {
-    time(10_000) {
-      val wsClient = app.injector.instanceOf[WSClient]
-      val response = await(wsClient.url(s"$url/echo").addQueryStringParameters("access_token" -> "from_query").get())
-    }
-  }
-
   "test echo endpoint" must {
     "parse token in query parameter" in {
       val wsClient = app.injector.instanceOf[WSClient]
